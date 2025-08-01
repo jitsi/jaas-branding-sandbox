@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="origin-when-cross-origin">
+  <link alt="8x8" rel="icon" type="image/svg+xml" href="https://vo-cdn.8x8.vc/static/rebranding/eght-logo-bare-light.svg" media="(prefers-color-scheme: light)" />
+  <link alt="8x8" rel="icon" type="image/svg+xml" href="https://vo-cdn.8x8.vc/static/rebranding/eght-logo-bare-dark.svg" media="(prefers-color-scheme: dark)" />
+  <title>JaaS Meetings</title>
+  <link href="https://fonts.googleapis.com/css?family=Inter:300,400,600,700,800" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+    }
+
+    #form-container {
+      flex-shrink: 0;
+    }
+
+    #stage-switch {
+      padding: 0 8px;
+    }
+
+    #stage-switch input {
+      height: 20px;
+    }
+
+    #meeting-wrapper {
+      position: relative;
+      aspect-ratio: 4 / 3;
+      overflow: hidden;
+      border-radius: 0.5rem;
+      margin: 0 40px 40px;
+      background: #bfbfbf;
+      min-height: 200px;
+    }
+
+    #meeting-placeholder {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: white;
+    }
+
+    #jaas-container {
+      width: 100%;
+      height: 100%;
+    }
+
+    #fullscreen-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 999;
+      background: rgba(0,0,0,0.6);
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 6px 10px;
+      display: none;
+      cursor: pointer;
+      transition: opacity 0.3s ease;
+    }
+
+    #meeting-wrapper:hover #fullscreen-btn {
+      display: inline-block;
+      opacity: 1;
+    }
+
+    #fullscreen-btn.hidden {
+      opacity: 0;
+      transition: opacity 1s ease;
+    }
+  </style>
+
+  <script src="https://8x8.vc/external_api.js"></script>
+</head>
+<body>
+  <form class="form-horizontal" id="form">
+    <fieldset class="m-4" id="form-container">
+      
+      <div class="form-group row my-2 justify-content-center">
+        <div class="col-12 col-md-4">
+          <label class="col-12 control-label" for="tenantInput"><b>Tenant*</b></label>
+          <input id="tenantInput" name="tenantInput" type="text" placeholder="vpaas-magic-cookie-..." class="form-control input-md w-100" required>
+          <div class="invalid-feedback">Please provide a valid tenant.</div>
+        </div>
+      </div>
+  
+      <div class="form-group row my-2 justify-content-center">
+        <div class="col-12 col-md-4">
+          <label class="col-12 control-label" for="roomInput"><b>Room*</b></label>
+          <input id="roomInput" name="roomInput" type="text" placeholder="Room name" class="form-control input-md w-100" required>
+          <div class="invalid-feedback">Please provide a room name.</div>
+        </div>
+      </div>
+  
+      <div class="form-group row my-2 justify-content-center">
+        <div class="col-12 col-md-4">
+          <label class="col-12 control-label" for="tokenInput">JWT (optional)</label>
+          <input id="tokenInput" name="tokenInput" type="text" placeholder="Your JWT here" class="form-control input-md w-100">
+        </div>
+      </div>
+
+      <div class="form-group col-12 col-md-4 my-2 mx-auto d-flex align-items-center justify-content-flex-start" id="stage-switch">
+        <div class="form-check form-switch m-0">
+          <input class="form-check-input" type="checkbox" id="useStageInput">
+        </div>
+        <label class="form-check-label me-2 mb-0" for="useStageInput">Use stage.8x8.vc</label>
+      </div>
+  
+      <div id="buttons" class="form-group row my-3 justify-content-center">
+        <div class="col-12 col-md-4 text-center">
+          <button id="goButton" type="button" class="btn btn-primary me-2">
+            <i class="bi bi-camera-video-fill"></i> Go
+          </button>
+          <button id="hangupButton" type="button" class="btn btn-danger">
+            <i class="bi bi-x-circle-fill"></i> Hang Up
+          </button>
+        </div>
+      </div>
+  
+    </fieldset>
+  </form>  
+
+  <div id="meeting-wrapper">
+    <div id="meeting-placeholder" class="d-flex justify-content-center align-items-center w-100 h-100 position-absolute top-0 start-0">
+      <p class="text-muted m-0">Meeting will load here.</p>
+    </div>
+    <div id="jaas-container"></div>
+    <button id="fullscreen-btn" title="Toggle fullscreen">
+      <i class="bi bi-arrows-fullscreen"></i>
+    </button>
+  </div>
+
+  <script>
+    let api;
+    const wrapper = document.getElementById("meeting-wrapper");
+    const fsBtn = document.getElementById("fullscreen-btn");
+  
+    function sanitizeInput(input) {
+      return input.replace(/[^a-zA-Z0-9_\-/]/g, '').trim();
+    }
+  
+    document.getElementById("goButton").addEventListener("click", () => {
+      const rawTenant = document.getElementById("tenantInput").value;
+      const rawRoom = document.getElementById("roomInput").value;
+      const rawJwt = document.getElementById("tokenInput").value;
+      const useStage = document.getElementById("useStageInput").checked;
+  
+      const tenant = sanitizeInput(rawTenant);
+      const room = sanitizeInput(rawRoom);
+      const jwt = rawJwt.trim();
+  
+      if (!tenant || !room) {
+        alert("Tenant and room are required.");
+        return;
+      }
+  
+      const domain = useStage ? "stage.8x8.vc" : "8x8.vc";
+      const roomName = `${tenant}/${room}`;
+  
+      if (api) {
+        api.dispose();
+        api = null;
+      }
+  
+      try {
+        api = new JitsiMeetExternalAPI(domain, {
+          roomName: roomName,
+          parentNode: document.getElementById("jaas-container"),
+          jwt: jwt || undefined
+        });
+        document.getElementById('meeting-placeholder')?.remove();
+      } catch (error) {
+        console.error("Failed to launch Jitsi Meeting:", error);
+        alert("There was an error launching the meeting. Check the console for details.");
+      }
+    });
+  
+    document.getElementById("hangupButton").addEventListener("click", () => {
+      if (api) {
+        api.dispose();
+        api = null;
+      }
+    });
+  
+    let isFullscreen = false;
+  
+    fsBtn.addEventListener("click", () => {
+      const elem = wrapper;
+      if (!isFullscreen) {
+        if (elem.requestFullscreen) elem.requestFullscreen();
+        else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
+        else if (elem.msRequestFullscreen) elem.msRequestFullscreen();
+      } else {
+        if (document.exitFullscreen) document.exitFullscreen();
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+        else if (document.msExitFullscreen) document.msExitFullscreen();
+      }
+    });
+  
+    document.addEventListener("fullscreenchange", () => {
+      isFullscreen = !!document.fullscreenElement;
+    });
+  
+    let hideTimeout;
+    wrapper.addEventListener("mouseover", () => {
+      fsBtn.classList.remove("hidden");
+      clearTimeout(hideTimeout);
+      hideTimeout = setTimeout(() => fsBtn.classList.add("hidden"), 3000);
+    });
+  
+    wrapper.addEventListener("mouseleave", () => {
+      fsBtn.classList.add("hidden");
+    });
+  </script>
+  
+</body>
+</html>
